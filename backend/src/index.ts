@@ -2,7 +2,7 @@
 import { Hono } from 'hono'
 import { PrismaClient } from '@prisma/client/edge'
 import { withAccelerate } from '@prisma/extension-accelerate'
-import { sign } from 'hono/jwt'
+import { sign, verify } from 'hono/jwt'
 
 const app = new Hono<{
 	Bindings: {
@@ -10,27 +10,27 @@ const app = new Hono<{
 		JWT_SECRET: string
 	}
 }>();
+
+// middleware :
+app.use('/api/v1/blog/*', async (c, next) => {
+	// get the header
+	// verify the header
+	// if header is correct, then proceed
+	// if not then send 403
+	const header = c.req.header("authorization") || ""
+	// bearer token => ["bearer", "token"]
+	// expects user to give bearer token in the authorization header
+	const token = header.split(" ")[1]
+	const response = await verify(token, c.env.JWT_SECRET)
+	if(response.id){
+		 next()
+	}else{
+		c.status(403)
+		return c.json({error: "unauthorized"})
+	}
+  })
+
 // @ts-ignore
-
-// app.post('/api/v1/signup', async (c) => {
-//   const prisma = new PrismaClient({
-//     datasourceUrl: c.env.DATABASE_URL,
-// }).$extends(withAccelerate())
-
-// const body = await c.req.json()
-
-// const user = await prisma.user.create({
-//   data: {
-//       email: body.email,
-//       password: body.password
-//   },
-// })
-// const token = sign({ id: user.id},)
-
-//   return c.text("")
-// })
-
-
 
 app.post('/api/v1/signin', async (c) => {
 	const prisma = new PrismaClient({
@@ -38,20 +38,22 @@ app.post('/api/v1/signin', async (c) => {
 	}).$extends(withAccelerate());
 
 	const body = await c.req.json();
-	try {
-		const user = await prisma.user.create({
-			data: {
-				email: body.email,
-				password: body.password
-			}
-		});
-		const jwt = await sign({ id: user.id }, c.env.JWT_SECRET);
-		return c.json({ jwt });
-	} catch(e) {
+	const user = await prisma.user.findUnique({
+		where: {
+			email: body.email,
+			password: body.password
+		}
+	});
+
+	if (!user) {
 		c.status(403);
-		return c.json({ error: "error while signing up" });
+		return c.json({ error: "user not found" });
 	}
+
+	const jwt = await sign({ id: user.id }, c.env.JWT_SECRET);
+	return c.json({ jwt });
 })
+
 
 
 app.post('/api/v1/signup', async (c) => {
